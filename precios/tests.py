@@ -13,6 +13,17 @@ from decimal import Decimal
 
 from .models import Category, Price, Product, Promotion, Store, Synonym
 
+import io
+import tempfile
+
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from PIL import Image
+from rest_framework.authtoken.models import Token
+from rest_framework.test import APIClient
+
 class SearchTests(TestCase):
     def setUp(self):
         lacteos = Category.objects.create(name="Lácteos", slug="lacteos")
@@ -196,3 +207,90 @@ class ComparadorApiTests(TestCase):
         promos = self.client.get("/api/inicio/").json()["promociones_destacadas"]
         self.assertEqual(len(promos), 10)
         self.assertEqual(promos[0]["titulo"], "P11")
+
+class AuthTests(TestCase):
+    def setUp(self):
+        cache.clear()      # reinicia el contador del límite de intentos de login
+        User = get_user_model()
+        self.duena = User.objects.create_user("duena", password="clave-segura-1")
+        self.tienda = Store.objects.create(
+            name="La Esquina", slug="la-esquina", owner=self.duena, latitude=-17.39, longitude=-66.15)
+        vecino = User.objects.create_user("vecino", password="clave-segura-2")
+        Store.objects.create(
+            name="El Vecino", slug="el-vecino", owner=vecino, latitude=-17.40, longitude=-66.16)
+        self.sin_tienda = User.objects.create_user("suelto", password="clave-segura-3")
+        self.api = APIClient()
+
+    def entrar(self, usuario, clave):
+        return self.api.post("/api/auth/login/", {"username": usuario, "password": clave}, format="json")
+
+    def con_token(self, usuario, clave):
+        cliente = APIClient()
+        cliente.credentials(HTTP_AUTHORIZATION="Token " + self.entrar(usuario, clave).json()["token"])
+        return cliente
+
+    def test_login_correcto(self):
+        r = self.entrar("duena", "clave-segura-1")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["token"])
+        self.assertEqual(r.json()["tienda"]["slug"], "la-esquina")
+
+    def test_login_clave_incorrecta(self):
+        self.assertEqual(self.entrar("duena", "mala").status_code, 401)
+
+    def test_login_sin_tienda(self):
+        self.assertEqual(self.entrar("suelto", "clave-segura-3").status_code, 403)
+
+    def test_me(self):
+        r = self.con_token("duena", "clave-segura-1").get("/api/auth/me/")
+        self.assertEqual(r.json()["tienda"]["nombre"], "La Esquina")
+
+    def test_mi_tienda_exige_token(self):
+        self.assertEqual(self.api.get("/api/mi-tienda/").status_code, 401)
+
+    def test_mi_tienda_exige_ser_dueno_de_tienda(self):
+        token = Token.objects.create(user=self.sin_tienda)
+        cliente = APIClient()
+        cliente.credentials(HTTP_AUTHORIZATION="Token " + token.key)
+        self.assertEqual(cliente.get("/api/mi-tienda/").status_code, 403)
+
+    def test_actualizar_perfil(self):
+        cliente = self.con_token("duena", "clave-segura-1")
+        r = cliente.patch("/api/mi-tienda/",
+                          {"descripcion": "Abarrotes y más", "horarios": "Lun-Sáb 8-20"}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.tienda.refresh_from_db()
+        self.assertEqual(self.tienda.description, "Abarrotes y más")
+
+    def test_validaciones(self):
+        cliente = self.con_token("duena", "clave-segura-1")
+        for dato in ({"color_principal": "verde"}, {"latitud": 200}, {"whatsapp": "abc"},
+                     {"nombre": "El Vecino"}):
+            r = cliente.patch("/api/mi-tienda/", dato, format="json")
+            self.assertEqual(r.status_code, 400, dato)
+
+    def test_slug_no_se_puede_cambiar(self):
+        cliente = self.con_token("duena", "clave-segura-1")
+        cliente.patch("/api/mi-tienda/", {"slug": "hack", "nombre": "Nuevo Nombre"}, format="json")
+        self.tienda.refresh_from_db()
+        self.assertEqual(self.tienda.slug, "la-esquina")
+        self.assertEqual(self.tienda.name, "Nuevo Nombre")
+
+    def test_cada_dueno_ve_su_tienda(self):
+        r = self.con_token("vecino", "clave-segura-2").get("/api/mi-tienda/")
+        self.assertEqual(r.json()["nombre"], "El Vecino")
+
+    def test_logout_invalida_el_token(self):
+        cliente = self.con_token("duena", "clave-segura-1")
+        self.assertEqual(cliente.post("/api/auth/logout/").status_code, 204)
+        self.assertEqual(cliente.get("/api/mi-tienda/").status_code, 401)
+
+    def test_subir_logo(self):
+        cliente = self.con_token("duena", "clave-segura-1")
+        buffer = io.BytesIO()
+        Image.new("RGB", (10, 10), "red").save(buffer, "PNG")
+        archivo = SimpleUploadedFile("logo.png", buffer.getvalue(), content_type="image/png")
+        with tempfile.TemporaryDirectory() as tmp, override_settings(MEDIA_ROOT=tmp):
+            r = cliente.patch("/api/mi-tienda/", {"logo": archivo}, format="multipart")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("/media/tiendas/logos/", r.json()["logo"])

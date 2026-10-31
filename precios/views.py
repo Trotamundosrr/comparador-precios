@@ -4,8 +4,6 @@ from rest_framework.exceptions import ValidationError
 
 from .geo import parse_coordinates, stores_by_distance
 from .models import Category, Store
-from .serializers import CategoriaSerializer, TiendaDetalleSerializer, TiendaListaSerializer
-
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
@@ -14,6 +12,21 @@ from rest_framework.views import APIView
 from .comparador import ORDERS, absolute_url, build_comparison, lowest_prices
 from .models import Category, Promotion, Store
 
+from django.contrib.auth import authenticate
+from rest_framework import generics, status
+from rest_framework.authtoken.models import Token
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
+
+from .permissions import IsStoreAdmin
+
+from .serializers import (
+    CategoriaSerializer,
+    LoginSerializer,
+    MiTiendaSerializer,
+    TiendaDetalleSerializer,
+    TiendaListaSerializer,
+)
 
 def read_coordinates(request, required=False):
     """Lee ?lat=&lng= de la URL. Devuelve (lat, lng) o None. Responde 400 si son inválidas."""
@@ -126,3 +139,52 @@ class InicioView(APIView):
             "promociones_destacadas": items,
             "categorias": CategoriaSerializer(Category.objects.all(), many=True).data,
         })
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []          # para pedir un token no hace falta tener uno
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    @extend_schema(request=LoginSerializer)
+    def post(self, request):
+        data = LoginSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        user = authenticate(request, username=data.validated_data["username"],
+                            password=data.validated_data["password"])
+        if user is None:
+            return Response({"detail": "Usuario o contraseña incorrectos."},
+                            status=status.HTTP_401_UNAUTHORIZED)
+        store = getattr(user, "store", None)
+        if store is None or not store.is_active:
+            return Response({"detail": "Esta cuenta no administra ninguna tienda activa."},
+                            status=status.HTTP_403_FORBIDDEN)
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({"token": token.key,
+                         "tienda": {"nombre": store.name, "slug": store.slug}})
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        Token.objects.filter(user=request.user).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MeView(APIView):
+    permission_classes = [IsStoreAdmin]
+
+    def get(self, request):
+        store = request.user.store
+        return Response({"usuario": request.user.username,
+                         "tienda": {"nombre": store.name, "slug": store.slug}})
+
+
+class MiTiendaView(generics.RetrieveUpdateAPIView):
+    serializer_class = MiTiendaSerializer
+    permission_classes = [IsStoreAdmin]
+    http_method_names = ["get", "patch", "head", "options"]    # leer y editar parcialmente
+
+    def get_object(self):
+        return self.request.user.store      # la tienda sale del token, no de la URL
+    

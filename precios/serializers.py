@@ -68,3 +68,36 @@ class TiendaDetalleSerializer(TiendaListaSerializer):
     def get_promociones(self, store):
         return PromocionSerializer(
             store.promotions.active(), many=True, context=self.context).data
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+
+
+class MiTiendaSerializer(serializers.ModelSerializer):
+    nombre = serializers.CharField(source="name", max_length=120)
+    descripcion = serializers.CharField(source="description", required=False, allow_blank=True)
+    zona = serializers.CharField(source="zone", required=False, allow_blank=True, max_length=100)
+    direccion = serializers.CharField(source="address", required=False, allow_blank=True, max_length=200)
+    latitud = serializers.FloatField(source="latitude", min_value=-90, max_value=90)
+    longitud = serializers.FloatField(source="longitude", min_value=-180, max_value=180)
+    whatsapp = serializers.RegexField(
+        r"^\+?\d{7,15}$", required=False, allow_blank=True,
+        error_messages={"invalid": "Debe tener solo números (7 a 15 dígitos)."})
+    horarios = serializers.CharField(source="hours", required=False, allow_blank=True, max_length=120)
+    color_principal = serializers.RegexField(
+        r"^#[0-9a-fA-F]{6}$", source="primary_color",
+        error_messages={"invalid": "Debe ser un color como #1f7a4d."})
+    logo = serializers.ImageField(required=False, allow_null=True)
+    portada = serializers.ImageField(source="cover", required=False, allow_null=True)
+
+    class Meta:
+        model = Store
+        fields = ["slug", "nombre", "descripcion", "zona", "direccion", "latitud", "longitud",
+                  "whatsapp", "horarios", "color_principal", "logo", "portada"]
+        read_only_fields = ["slug"]
+
+    def validate_nombre(self, value):
+        value = value.strip()
+        if Store.objects.exclude(pk=self.instance.pk).filter(name__iexact=value).exists():
+            raise serializers.ValidationError("Ya existe una tienda con ese nombre.")
+        return value
