@@ -12,4 +12,11 @@ urlpatterns = [
     path("auth/logout/", views.LogoutView.as_view()),
     path("auth/me/", views.MeView.as_view()),
     path("mi-tienda/", views.MiTiendaView.as_view()),
+    path("mi-tienda/productos/", views.MisProductosView.as_view()),
+    path("mi-tienda/productos/sugerencias/", views.SugerenciasProductoView.as_view()),
+    path("mi-tienda/productos/<int:pk>/", views.MiProductoDetalleView.as_view()),
+    path("mi-tienda/promociones/", views.MisPromocionesView.as_view()),
+    path("mi-tienda/promociones/<int:pk>/", views.MiPromocionDetalleView.as_view()),
+    path("mi-tienda/plantilla/", views.PlantillaView.as_view()),
+    path("mi-tienda/importar/", views.ImportarView.as_view()),
 ]

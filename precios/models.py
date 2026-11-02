@@ -57,6 +57,8 @@ class Product(models.Model):
     barcode = models.CharField("código de barras", max_length=20, blank=True, db_index=True)
     search_text = models.CharField(max_length=400, default="", blank=True,
                                    editable=False, db_index=True)
+    match_key = models.CharField(max_length=300, default="", blank=True,
+                                 editable=False, db_index=True)
     
     class Meta:
         verbose_name = "producto"
@@ -65,6 +67,7 @@ class Product(models.Model):
     def save(self, *args, **kwargs):
         category = self.category.name if self.category else ""
         self.search_text = normalize(f"{self.name} {self.brand} {self.unit} {category}")
+        self.match_key = normalize(f"{self.name} {self.brand} {self.unit}")
         super().save(*args, **kwargs)
     def __str__(self):
         return f"{self.name} {self.brand} {self.unit}".strip()

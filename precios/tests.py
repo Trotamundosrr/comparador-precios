@@ -294,3 +294,219 @@ class AuthTests(TestCase):
             r = cliente.patch("/api/mi-tienda/", {"logo": archivo}, format="multipart")
         self.assertEqual(r.status_code, 200)
         self.assertIn("/media/tiendas/logos/", r.json()["logo"])
+class PanelTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.duena = User.objects.create_user("duena2")        # sin contraseña: más rápido
+        self.vecino = User.objects.create_user("vecino2")
+        self.tienda = Store.objects.create(
+            name="Mi Tienda", slug="mi-tienda", owner=self.duena, latitude=-17.39, longitude=-66.15)
+        self.otra = Store.objects.create(
+            name="Otra Tienda", slug="otra-tienda", owner=self.vecino, latitude=-17.40, longitude=-66.16)
+        Category.objects.create(name="Lácteos", slug="lacteos")
+        self.api = self.cliente(self.duena)
+        self.api_vecino = self.cliente(self.vecino)
+
+    def cliente(self, usuario):
+        token, _ = Token.objects.get_or_create(user=usuario)
+        c = APIClient()
+        c.credentials(HTTP_AUTHORIZATION="Token " + token.key)
+        return c
+
+    def crear(self, cliente=None, **cambios):
+        datos = {"nombre": "Leche entera", "marca": "PIL", "presentacion": "1 L", "precio": "9.50"}
+        datos.update(cambios)
+        return (cliente or self.api).post("/api/mi-tienda/productos/", datos, format="json")
+
+    def test_exige_token(self):
+        self.assertEqual(APIClient().get("/api/mi-tienda/productos/").status_code, 401)
+
+    def test_crear_producto(self):
+        r = self.crear(categoria="lacteos")
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.json()["nombre"], "Leche entera")
+        self.assertEqual(r.json()["categoria"], "Lácteos")
+        self.assertEqual(Price.objects.get(store=self.tienda).amount, Decimal("9.50"))
+
+    def test_repetir_producto_actualiza_el_precio_sin_duplicar(self):
+        self.crear()
+        r = self.crear(nombre="LECHE entera", precio="8.00")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Product.objects.count(), 1)
+        self.assertEqual(Price.objects.get(store=self.tienda).amount, Decimal("8.00"))
+
+    def test_dos_tiendas_comparten_el_producto_y_el_comparador_las_junta(self):
+        self.crear()
+        self.crear(cliente=self.api_vecino, precio="8.80")
+        self.assertEqual(Product.objects.count(), 1)
+        item = self.client.get("/api/comparador/", {"q": "leche"}).json()["results"][0]
+        self.assertEqual([p["tienda"]["slug"] for p in item["precios"]], ["otra-tienda", "mi-tienda"])
+
+    def test_codigo_de_barras_reutiliza_producto(self):
+        self.crear(nombre="Leche A", codigo_barras="7771234567890")
+        self.crear(cliente=self.api_vecino, nombre="Leche B distinta", codigo_barras="7771234567890")
+        self.assertEqual(Product.objects.count(), 1)
+
+    def test_vincular_producto_existente_por_id(self):
+        producto_id = self.crear().json()["producto_id"]
+        r = self.api_vecino.post("/api/mi-tienda/productos/",
+                                 {"producto_id": producto_id, "precio": "7.00"}, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(Product.objects.count(), 1)
+        self.assertEqual(Price.objects.filter(store=self.otra).count(), 1)
+
+    def test_validaciones_de_producto(self):
+        for datos in ({"precio": "0"}, {"precio": "-3"}, {"precio": "abc"},
+                      {"categoria": "no-existe"}, {"codigo_barras": "12"}, {"producto_id": 9999}):
+            self.assertEqual(self.crear(**datos).status_code, 400, datos)
+        r = self.api.post("/api/mi-tienda/productos/", {"precio": "5"}, format="json")
+        self.assertEqual(r.status_code, 400)       # sin nombre ni producto_id
+
+    def test_subir_imagen(self):
+        buffer = io.BytesIO()
+        Image.new("RGB", (10, 10), "blue").save(buffer, "PNG")
+        archivo = SimpleUploadedFile("leche.png", buffer.getvalue(), content_type="image/png")
+        with tempfile.TemporaryDirectory() as tmp, override_settings(MEDIA_ROOT=tmp):
+            r = self.api.post("/api/mi-tienda/productos/",
+                              {"nombre": "Leche", "precio": "9", "imagen": archivo}, format="multipart")
+        self.assertEqual(r.status_code, 201)
+        self.assertIn("/media/precios/", r.json()["imagen"])
+
+    def test_listar_solo_mis_productos_y_buscar_con_error_de_tipeo(self):
+        self.crear()
+        self.crear(nombre="Arroz", marca="", presentacion="1 kg", precio="9")
+        self.crear(cliente=self.api_vecino, nombre="Papa", precio="5")
+        self.assertEqual(self.api.get("/api/mi-tienda/productos/").json()["count"], 2)
+        r = self.api.get("/api/mi-tienda/productos/", {"q": "lehce"}).json()
+        self.assertEqual([p["nombre"] for p in r["results"]], ["Leche entera"])
+
+    def test_editar_precio_y_disponibilidad(self):
+        precio_id = self.crear().json()["id"]
+        r = self.api.patch(f"/api/mi-tienda/productos/{precio_id}/",
+                           {"precio": "10.00", "disponible": False}, format="json")
+        self.assertEqual(r.status_code, 200)
+        precio = Price.objects.get(pk=precio_id)
+        self.assertEqual(precio.amount, Decimal("10.00"))
+        self.assertFalse(precio.available)
+
+    def test_no_se_puede_tocar_el_precio_de_otra_tienda(self):
+        precio_id = self.crear().json()["id"]
+        url = f"/api/mi-tienda/productos/{precio_id}/"
+        self.assertEqual(self.api_vecino.patch(url, {"precio": "1"}, format="json").status_code, 404)
+        self.assertEqual(self.api_vecino.delete(url).status_code, 404)
+        self.assertEqual(Price.objects.get(pk=precio_id).amount, Decimal("9.50"))
+
+    def test_borrar_quita_el_precio_pero_no_el_producto(self):
+        precio_id = self.crear().json()["id"]
+        self.assertEqual(self.api.delete(f"/api/mi-tienda/productos/{precio_id}/").status_code, 204)
+        self.assertEqual(Price.objects.count(), 0)
+        self.assertEqual(Product.objects.count(), 1)
+
+    def test_sugerencias(self):
+        self.crear()
+        r = self.api_vecino.get("/api/mi-tienda/productos/sugerencias/", {"q": "lec"}).json()
+        self.assertEqual(r[0]["nombre"], "Leche entera")
+
+    def test_crear_promocion_y_verla_en_el_inicio(self):
+        producto_id = self.crear().json()["producto_id"]
+        r = self.api.post("/api/mi-tienda/promociones/",
+                          {"titulo": "Oferta leche", "producto": producto_id, "precio_promo": "8.00"},
+                          format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(self.api.get("/api/mi-tienda/promociones/").json()["count"], 1)
+        promo = self.client.get("/api/inicio/").json()["promociones_destacadas"][0]
+        self.assertEqual(promo["precio_mas_bajo"]["precio"], 8.0)
+
+    def test_reglas_de_promocion(self):
+        producto_id = self.crear().json()["producto_id"]       # lo vendo a 9.50
+        malas = [
+            {"titulo": "x", "producto": producto_id, "precio_promo": "9.50"},    # no es menor
+            {"titulo": "x", "producto": 99999},                                   # no lo vendo
+            {"titulo": "x", "valida_desde": "2026-12-10", "valida_hasta": "2026-12-01"},
+            {"descripcion": "sin título"},
+        ]
+        for datos in malas:
+            r = self.api.post("/api/mi-tienda/promociones/", datos, format="json")
+            self.assertEqual(r.status_code, 400, datos)
+
+    def test_promocion_ajena_es_404(self):
+        promo_id = self.api.post("/api/mi-tienda/promociones/", {"titulo": "General"},
+                                 format="json").json()["id"]
+        url = f"/api/mi-tienda/promociones/{promo_id}/"
+        self.assertEqual(self.api_vecino.delete(url).status_code, 404)
+        self.assertEqual(self.api.delete(url).status_code, 204)
+
+import csv
+from openpyxl import Workbook, load_workbook
+
+
+class ImportTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        owner = User.objects.create_user("duena3")
+        self.store = Store.objects.create(
+            name="Tienda Excel", slug="tienda-excel", owner=owner,
+            latitude=-17.39, longitude=-66.15,
+        )
+        Category.objects.create(name="Lácteos", slug="lacteos")
+        token, _ = Token.objects.get_or_create(user=owner)
+        self.api = APIClient()
+        self.api.credentials(HTTP_AUTHORIZATION="Token " + token.key)
+
+    def archivo(self, rows):
+        book = Workbook()
+        sheet = book.active
+        for row in rows:
+            sheet.append(row)
+        buffer = io.BytesIO()
+        book.save(buffer)
+        buffer.seek(0)
+        return SimpleUploadedFile(
+            "productos.xlsx", buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    def test_descarga_la_plantilla(self):
+        response = self.api.get("/api/mi-tienda/plantilla/")
+        self.assertEqual(response.status_code, 200)
+        book = load_workbook(io.BytesIO(response.content))
+        self.assertEqual(book.active["A1"].value, "nombre")
+
+    def test_importa_y_actualiza_sin_duplicar(self):
+        rows = [
+            ["nombre", "marca", "presentacion", "categoria", "precio", "codigo_barras", "disponible"],
+            ["Leche entera", "PIL", "1 L", "lacteos", 9.5, "7771234567890", "si"],
+        ]
+        first = self.api.post("/api/mi-tienda/importar/", {"archivo": self.archivo(rows)}, format="multipart")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["creados"], 1)
+
+        rows[1][4] = 8.4
+        second = self.api.post("/api/mi-tienda/importar/", {"archivo": self.archivo(rows)}, format="multipart")
+        self.assertEqual(second.json()["actualizados"], 1)
+        self.assertEqual(Product.objects.count(), 1)
+        self.assertEqual(Price.objects.get(store=self.store).amount, Decimal("8.40"))
+
+    def test_una_fila_mala_no_frena_a_las_buenas(self):
+        rows = [
+            ["nombre", "precio", "categoria"],
+            ["Arroz", 9, "lacteos"],
+            ["", -1, "no-existe"],
+            ["Fideo", 6.5, ""],
+        ]
+        report = self.api.post(
+            "/api/mi-tienda/importar/", {"archivo": self.archivo(rows)}, format="multipart",
+        ).json()
+        self.assertEqual(report["creados"], 2)
+        self.assertEqual(report["errores"][0]["fila"], 3)
+        self.assertIn("nombre", report["errores"][0]["errores"])
+        self.assertIn("precio", report["errores"][0]["errores"])
+        self.assertIn("categoria", report["errores"][0]["errores"])
+
+    def test_rechaza_otro_formato_y_pide_token(self):
+        bad = SimpleUploadedFile("notas.txt", b"hola", content_type="text/plain")
+        self.assertEqual(
+            self.api.post("/api/mi-tienda/importar/", {"archivo": bad}, format="multipart").status_code,
+            400,
+        )
+        self.assertEqual(APIClient().get("/api/mi-tienda/plantilla/").status_code, 401)
