@@ -65,7 +65,12 @@ def read_coordinates(request, required=False):
 
 
 def stores_queryset():
-    return Store.objects.filter(is_active=True).annotate(product_count=Count("prices"))
+    return (
+        Store.objects
+        .filter(is_active=True)
+        .annotate(product_count=Count("prices"))
+        .order_by("name")
+    )
 
 
 class CategoriaListView(generics.ListAPIView):
