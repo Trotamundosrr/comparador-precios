@@ -12,6 +12,11 @@ urlpatterns = [
         TemplateView.as_view(template_name="precios/inicio.html"),
         name="inicio",
     ),
+    path(
+        "acceso/",
+        TemplateView.as_view(template_name="precios/login.html"),
+        name="acceso",
+    ),
     path("admin/", admin.site.urls),
     path("api/", include("precios.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
