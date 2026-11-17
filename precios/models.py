@@ -1,8 +1,12 @@
+import secrets
+
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from .texto import normalize
+
 
 class Category(models.Model):
     name = models.CharField("nombre", max_length=100, unique=True)
@@ -136,3 +140,45 @@ class PromotionQuerySet(models.QuerySet):
         return self.filter(valid_from__lte=today).filter(
             Q(valid_until__isnull=True) | Q(valid_until__gte=today)
         )
+
+class Reservation(models.Model):
+    """Reserva de un producto en una tienda (el cliente no necesita cuenta)."""
+    STATUS = [
+        ("pendiente", "Pendiente"),
+        ("confirmada", "Confirmada"),
+        ("entregada", "Entregada"),
+        ("cancelada", "Cancelada"),
+    ]
+    CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # sin 0/O ni 1/I
+
+    code = models.CharField("código", max_length=8, unique=True, editable=False)
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="reservations")
+    product = models.ForeignKey(Product, null=True, on_delete=models.SET_NULL,
+                                related_name="reservations")
+    product_name = models.CharField("producto", max_length=250)     # copia por si se borra
+    unit_price = models.DecimalField("precio unitario (Bs)", max_digits=10, decimal_places=2)
+    quantity = models.PositiveIntegerField("cantidad", default=1)
+    customer_name = models.CharField("cliente", max_length=120)
+    customer_phone = models.CharField("teléfono", max_length=20)
+    status = models.CharField("estado", max_length=12, choices=STATUS, default="pendiente")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "reserva"
+        ordering = ["-created_at"]
+
+    @property
+    def total(self):
+        return self.unit_price * self.quantity
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            while True:
+                code = "".join(secrets.choice(self.CODE_ALPHABET) for _ in range(8))
+                if not Reservation.objects.filter(code=code).exists():
+                    self.code = code
+                    break
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.code} - {self.product_name} x{self.quantity}"    

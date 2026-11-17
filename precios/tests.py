@@ -400,7 +400,7 @@ class PanelTests(TestCase):
         precio_id = self.crear().json()["id"]
         self.assertEqual(self.api.delete(f"/api/mi-tienda/productos/{precio_id}/").status_code, 204)
         self.assertEqual(Price.objects.count(), 0)
-        self.assertEqual(Product.objects.count(), 1)
+        self.assertEqual(Product.objects.count(), 0)     # nadie más lo vende: sale del catálogo
 
     def test_sugerencias(self):
         self.crear()

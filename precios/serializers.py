@@ -117,15 +117,30 @@ class MiProductoSalidaSerializer(serializers.ModelSerializer):
     imagen = serializers.ImageField(source="image")
     disponible = serializers.BooleanField(source="available")
     actualizado = serializers.DateTimeField(source="updated_at")
+    categoria_slug = serializers.SerializerMethodField()
+    catalogo_editable = serializers.SerializerMethodField(
+        help_text="false si otras tiendas venden este producto: nombre, marca, presentación, "
+                  "categoría y código de barras quedan bloqueados.")
 
     class Meta:
         model = Price
         fields = ["id", "producto_id", "nombre", "marca", "presentacion", "categoria",
-                  "codigo_barras", "precio", "imagen", "disponible", "actualizado"]
+                  "categoria_slug", "codigo_barras", "precio", "imagen", "disponible",
+                  "catalogo_editable", "actualizado"]
 
     def get_categoria(self, price):
         category = price.product.category
         return category.name if category else None
+
+    def get_categoria_slug(self, price):
+        category = price.product.category
+        return category.slug if category else None
+
+    def get_catalogo_editable(self, price):
+        vendedores = getattr(price, "vendedores", None)       # viene anotado en las listas
+        if vendedores is None:
+            vendedores = Price.objects.filter(product_id=price.product_id).count()
+        return vendedores <= 1
 
 
 class MiProductoEntradaSerializer(serializers.Serializer):
@@ -156,16 +171,38 @@ class MiProductoEntradaSerializer(serializers.Serializer):
         return attrs
 
 
-class MiProductoEdicionSerializer(serializers.ModelSerializer):
-    """Lo único que una tienda puede cambiar de un producto ya cargado."""
-    precio = serializers.DecimalField(source="amount", max_digits=10, decimal_places=2,
-                                      min_value=Decimal("0.01"))
-    disponible = serializers.BooleanField(source="available")
-    imagen = serializers.ImageField(source="image", allow_null=True)   # null = quitar la imagen
+class MiProductoEdicionSerializer(serializers.Serializer):
+    """PATCH de un producto de mi tienda. Todos los campos son opcionales.
+    precio, disponible e imagen son de MI tienda; los demás son del catálogo compartido
+    y solo se pueden cambiar si ninguna otra tienda vende el producto."""
+    nombre = serializers.CharField(max_length=200)
+    marca = serializers.CharField(max_length=100, allow_blank=True)
+    presentacion = serializers.CharField(max_length=50, allow_blank=True)
+    categoria = serializers.SlugField(allow_blank=True, help_text='Slug. Vacío "" = quitar la categoría')
+    codigo_barras = serializers.RegexField(
+        r"^\d{8,14}$", allow_blank=True,
+        error_messages={"invalid": "Debe tener entre 8 y 14 dígitos."})
+    precio = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
+    disponible = serializers.BooleanField()
+    imagen = serializers.ImageField(allow_null=True, help_text="null o vacío = quitar la imagen")
 
-    class Meta:
-        model = Price
-        fields = ["precio", "disponible", "imagen"]
+    def validate_nombre(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("El nombre no puede estar vacío.")
+        return value
+
+    def validate(self, attrs):
+        if "categoria" in attrs:
+            slug = attrs["categoria"]
+            if slug:
+                category = Category.objects.filter(slug=slug).first()
+                if category is None:
+                    raise serializers.ValidationError({"categoria": "Esa categoría no existe."})
+                attrs["category"] = category
+            else:
+                attrs["category"] = None
+        return attrs
 
 
 class MiPromocionSerializer(serializers.ModelSerializer):
