@@ -18,6 +18,27 @@ async function cargarPanel() {
         Accept: "application/json"
     };
 
+    const cerrarSesion = document.getElementById("cerrar-sesion");
+
+    cerrarSesion.addEventListener("click", async () => {
+        cerrarSesion.disabled = true;
+
+        try {
+            const respuesta = await fetch("/api/auth/logout/", {
+                method: "POST",
+                headers
+            });
+
+            if (!respuesta.ok && respuesta.status !== 401) {
+                throw new Error("No se pudo cerrar sesión. Intentá de nuevo.");
+            }
+
+            volverAlAcceso();
+        } catch (error) {
+            window.alert(error.message);
+            cerrarSesion.disabled = false;
+        }
+    });
     contenedor.textContent = "Cargando productos...";
 
     try {
