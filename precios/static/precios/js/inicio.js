@@ -262,6 +262,12 @@ function mostrarTiendas(tiendas) {
                         <p class="mb-0 fw-semibold">
                             ${tienda.cantidad_productos} productos publicados
                         </p>
+                        <a
+                            href="/tiendas/${encodeURIComponent(tienda.slug)}/"
+                            class="btn btn-outline-success mt-3"
+                        >
+                            Ver tienda
+                        </a>
                     </div>
                 </article>
             </div>
@@ -402,7 +408,12 @@ function mostrarResultados(resultados) {
 
                         <div>
                             <p class="fw-bold mb-1">
-                                ${escaparHtml(registro.tienda.nombre)}
+                                <a
+                                    href="/tiendas/${encodeURIComponent(registro.tienda.slug)}/"
+                                    class="text-success"
+                                >
+                                    ${escaparHtml(registro.tienda.nombre)}
+                                </a>
                             </p>
 
                             ${

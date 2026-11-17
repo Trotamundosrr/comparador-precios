@@ -366,3 +366,48 @@ class ImportarView(APIView):
         except ValueError as exc:
             return Response({"archivo": [str(exc)]}, status=400)
         return Response(import_products(request.user.store, rows))
+
+class TiendaProductosView(APIView):
+    """Catálogo público de una tienda activa."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug):
+        from .comparador import _best_promotions, _effective_price
+
+        tienda = generics.get_object_or_404(
+            Store,
+            slug=slug,
+            is_active=True,
+        )
+
+        precios = list(
+            Price.objects.filter(store=tienda, available=True)
+            .select_related("product", "product__category")
+            .order_by("product__name", "id")
+        )
+
+        promociones = _best_promotions(
+            [precio.product_id for precio in precios]
+        )
+
+        productos = []
+
+        for precio in precios:
+            producto = precio.product
+            promocion = promociones.get((tienda.id, producto.id))
+
+            productos.append({
+                "nombre": producto.name,
+                "marca": producto.brand,
+                "presentacion": producto.unit,
+                "categoria": (
+                    producto.category.name
+                    if producto.category else None
+                ),
+                "precio": precio.amount,
+                "precio_efectivo": _effective_price(precio, promocion),
+                "actualizado": precio.updated_at,
+            })
+
+        return Response(productos)

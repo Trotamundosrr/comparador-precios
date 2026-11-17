@@ -1,0 +1,37 @@
+{% extends "precios/base.html" %}
+{% load static %}
+
+{% block title %}Detalle de tienda | ComparaPrecios{% endblock %}
+
+{% block content %}
+<section
+    id="detalle-tienda"
+    class="container py-5"
+    data-slug="{{ slug }}"
+>
+    <a href="/#tiendas" class="btn btn-outline-success mb-4">
+        Volver a las tiendas
+    </a>
+
+    <div id="mensaje-tienda" role="status" class="mb-3">
+        Cargando información...
+    </div>
+
+    <header class="mb-5">
+        <h1 id="tienda-nombre">Detalle de tienda</h1>
+        <p id="tienda-descripcion" class="text-secondary"></p>
+        <p id="tienda-direccion"></p>
+        <p id="tienda-horarios"></p>
+    </header>
+
+    <h2 class="h4 mb-3">Promociones</h2>
+    <div id="tienda-promociones" class="row g-3 mb-5"></div>
+
+    <h2 class="h4 mb-3">Productos y precios</h2>
+    <div id="tienda-productos" class="row g-3"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'precios/js/tienda.js' %}" defer></script>
+{% endblock %}

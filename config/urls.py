@@ -25,7 +25,12 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("precios.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),
+    path("api/docs/", SpectacularSwaggerView.as_view            (url_name="schema"), name="docs"),
+        path(
+        "tiendas/<slug:slug>/",
+        TemplateView.as_view(template_name="precios/tienda.html"),
+        name="tienda",
+    ),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

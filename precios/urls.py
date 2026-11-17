@@ -19,4 +19,8 @@ urlpatterns = [
     path("mi-tienda/promociones/<int:pk>/", views.MiPromocionDetalleView.as_view()),
     path("mi-tienda/plantilla/", views.PlantillaView.as_view()),
     path("mi-tienda/importar/", views.ImportarView.as_view()),
+        path(
+        "tiendas/<slug:slug>/productos/",
+        views.TiendaProductosView.as_view(),
+    ),
 ]
