@@ -44,7 +44,7 @@ from .serializers import (
     TiendaDetalleSerializer,
     TiendaListaSerializer,
 )
-from .services import upsert_store_product
+from .services import remove_store_product, update_store_product, upsert_store_product
 from django.http import HttpResponse
 from rest_framework.parsers import FormParser, MultiPartParser
 
@@ -219,6 +219,9 @@ class MiTiendaView(generics.RetrieveUpdateAPIView):
     get=extend_schema(parameters=[
         OpenApiParameter("q", str, description="Buscar entre mis productos (tolera errores de tipeo)"),
         OpenApiParameter("categoria", str, description="Slug de categoría"),
+        OpenApiParameter("disponible", str, description="1 = solo disponibles, 0 = solo agotados"),
+        OpenApiParameter("orden", str, enum=["nombre", "precio", "-precio", "reciente"],
+                        description="Por defecto: nombre"),
     ]),
     post=extend_schema(request=MiProductoEntradaSerializer,
                        responses={201: MiProductoSalidaSerializer}),
@@ -231,7 +234,13 @@ class MisProductosView(generics.ListCreateAPIView):
         store = self.request.user.store          # solo MI tienda
         prices = (Price.objects.filter(store=store)
                   .select_related("product", "product__category")
-                  .order_by("product__name"))
+                  .annotate(vendedores=Count("product__prices")))
+        orden = {"precio": "amount", "-precio": "-amount", "reciente": "-updated_at"}.get(
+            self.request.query_params.get("orden", ""), "product__name")
+        prices = prices.order_by(orden, "id")
+        disponible = self.request.query_params.get("disponible", "")
+        if disponible in ("0", "1"):
+            prices = prices.filter(available=(disponible == "1"))
         q = self.request.query_params.get("q", "").strip()
         if q:
             mine = Product.objects.filter(prices__store=store)
@@ -265,14 +274,19 @@ class MiProductoDetalleView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return (Price.objects.filter(store=self.request.user.store)      # solo MIS precios
-                .select_related("product", "product__category"))
+                .select_related("product", "product__category")
+                .annotate(vendedores=Count("product__prices")))
 
     def update(self, request, *args, **kwargs):
         price = self.get_object()
-        serializer = MiProductoEdicionSerializer(price, data=request.data, partial=True)
+        serializer = MiProductoEdicionSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        price = update_store_product(price, serializer.validated_data)
+        price.vendedores = None          # forzar recalcular tras el cambio
         return Response(MiProductoSalidaSerializer(price, context=self.get_serializer_context()).data)
+
+    def perform_destroy(self, price):
+        remove_store_product(price)
 
 
 class SugerenciasProductoView(APIView):
