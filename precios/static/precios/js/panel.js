@@ -152,3 +152,92 @@ async function cargarPanel() {
 }
 
 cargarPanel();
+const formularioProducto = document.getElementById("form-producto");
+const botonAgregar = document.getElementById("agregar-producto");
+const mensajeProducto = document.getElementById("mensaje-producto");
+
+// Mostrar la confirmación después de recargar el panel.
+const confirmacion = sessionStorage.getItem("producto-guardado");
+
+if (confirmacion) {
+    mensajeProducto.textContent = confirmacion;
+    mensajeProducto.className = "text-success mt-3";
+    sessionStorage.removeItem("producto-guardado");
+}
+
+botonAgregar.disabled = false;
+
+formularioProducto.addEventListener("submit", async (evento) => {
+    evento.preventDefault();
+
+    const nombre = document.getElementById("producto-nombre").value.trim();
+    const marca = document.getElementById("producto-marca").value.trim();
+    const presentacion = document.getElementById("producto-presentacion").value.trim();
+    const precio = document.getElementById("producto-precio").value;
+
+    if (!nombre || !presentacion) {
+        mensajeProducto.textContent = "Completá el nombre y la presentación.";
+        mensajeProducto.className = "text-danger mt-3";
+        return;
+    }
+
+    const token = localStorage.getItem("token_comercio");
+
+    if (!token) {
+        window.location.replace("/acceso/");
+        return;
+    }
+
+    botonAgregar.disabled = true;
+    botonAgregar.textContent = "Guardando...";
+    mensajeProducto.textContent = "";
+
+    try {
+        const respuesta = await fetch("/api/mi-tienda/productos/", {
+            method: "POST",
+            headers: {
+                Authorization: `Token ${token}`,
+                "Content-Type": "application/json",
+                Accept: "application/json"
+            },
+            body: JSON.stringify({
+                nombre,
+                marca,
+                presentacion,
+                precio,
+                disponible: true
+            })
+        });
+
+        if (respuesta.status === 401) {
+            localStorage.removeItem("token_comercio");
+            localStorage.removeItem("tienda_comercio");
+            window.location.replace("/acceso/");
+            return;
+        }
+
+        if (!respuesta.ok) {
+            const errores = await respuesta.json().catch(() => null);
+            throw new Error(
+                errores
+                    ? JSON.stringify(errores)
+                    : `No se pudo guardar (${respuesta.status}).`
+            );
+        }
+
+        const producto = await respuesta.json();
+
+        sessionStorage.setItem(
+            "producto-guardado",
+            `${producto.nombre}: precio publicado correctamente.`
+        );
+
+        window.location.reload();
+    } catch (error) {
+        mensajeProducto.textContent = error.message;
+        mensajeProducto.className = "text-danger mt-3";
+    } finally {
+        botonAgregar.disabled = false;
+        botonAgregar.textContent = "Agregar producto";
+    }
+});

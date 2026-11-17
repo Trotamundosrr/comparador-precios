@@ -1,16 +1,122 @@
 {% extends "precios/base.html" %}
 {% load static %}
+
 {% block title %}Mi tienda | ComparaPrecios{% endblock %}
 
 {% block content %}
 <section class="container py-5">
-    <h1 id="nombre-tienda">Mi tienda</h1>
-    <button id="cerrar-sesion" type="button" class="btn btn-outline-secondary">
-    Cerrar sesión
-    </button>
-    <h2 class="h4 mt-4">Mis productos y precios</h2>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <h1 id="nombre-tienda" class="mb-0">Mi tienda</h1>
+
+        <button
+            id="cerrar-sesion"
+            type="button"
+            class="btn btn-outline-secondary"
+        >
+            Cerrar sesión
+        </button>
+    </div>
+
+    <div class="card shadow-sm mb-5">
+        <div class="card-body p-4">
+            <h2 class="h4 mb-3">Agregar producto</h2>
+
+            <p class="text-secondary">
+                Indicá el nombre, la marca y la presentación exacta
+                para comparar productos equivalentes.
+            </p>
+
+            <form id="form-producto">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="producto-nombre" class="form-label">
+                            Nombre del producto
+                        </label>
+
+                        <input
+                            id="producto-nombre"
+                            name="nombre"
+                            type="text"
+                            class="form-control"
+                            maxlength="200"
+                            placeholder="Ejemplo: Leche entera"
+                            required
+                        >
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="producto-marca" class="form-label">
+                            Marca
+                        </label>
+
+                        <input
+                            id="producto-marca"
+                            name="marca"
+                            type="text"
+                            class="form-control"
+                            maxlength="100"
+                            placeholder="Ejemplo: PIL"
+                        >
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="producto-presentacion" class="form-label">
+                            Presentación
+                        </label>
+
+                        <input
+                            id="producto-presentacion"
+                            name="presentacion"
+                            type="text"
+                            class="form-control"
+                            maxlength="50"
+                            placeholder="Ejemplo: 900 ml o 1 kg"
+                            required
+                        >
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="producto-precio" class="form-label">
+                            Precio en bolivianos
+                        </label>
+
+                        <input
+                            id="producto-precio"
+                            name="precio"
+                            type="number"
+                            class="form-control"
+                            min="0.01"
+                            max="99999999.99"
+                            step="0.01"
+                            placeholder="Ejemplo: 10.50"
+                            required
+                        >
+                    </div>
+                </div>
+
+                <button
+                    id="agregar-producto"
+                    type="submit"
+                    class="btn btn-success mt-3"
+                    disabled
+                >
+                    Agregar producto
+                </button>
+
+                <p
+                    id="mensaje-producto"
+                    class="mt-3 mb-0"
+                    role="status"
+                    aria-live="polite"
+                ></p>
+            </form>
+        </div>
+    </div>
+
+    <h2 class="h4 mb-3">Mis productos y precios</h2>
+
     <div id="productos-tienda">
-        Aquí aparecerán los productos de tu tienda.
+        Cargando productos...
     </div>
 </section>
 {% endblock %}
