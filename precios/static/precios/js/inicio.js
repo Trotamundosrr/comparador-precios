@@ -271,28 +271,19 @@ function mostrarTiendas(tiendas) {
 
 
 async function buscarProductos() {
-    const texto = document
-        .getElementById("texto-busqueda")
-        .value
-        .trim();
-
-    const categoria = document
-        .getElementById("categoria-busqueda")
-        .value;
-
-    let orden = document
-        .getElementById("orden-resultados")
-        .value;
-
+    const texto = document.getElementById("texto-busqueda").value.trim();
+    const categoria = document.getElementById("categoria-busqueda").value;
+    const selectorOrden = document.getElementById("orden-resultados");
     const mensaje = document.getElementById("mensaje-busqueda");
     const cargando = document.getElementById("cargando-resultados");
     const contenedor = document.getElementById("resultados-comparador");
 
+    let orden = selectorOrden.value;
+    let avisoUbicacion = "";
+
     if (!texto && !categoria) {
-        mensaje.classList.remove("d-none");
         mensaje.className = "alert alert-warning";
-        mensaje.textContent =
-            "Escribe un producto o selecciona una categoría.";
+        mensaje.textContent = "Escribí un producto o seleccioná una categoría.";
         return;
     }
 
@@ -310,30 +301,68 @@ async function buscarProductos() {
         parametros.set("categoria", categoria);
     }
 
-    parametros.set("orden", orden);
-
-    mensaje.classList.add("d-none");
-    contenedor.innerHTML = "";
+    contenedor.replaceChildren();
+    mensaje.className = "alert d-none";
     cargando.classList.remove("d-none");
 
     try {
+        if (orden === "cercania") {
+            mensaje.className = "alert alert-info";
+            mensaje.textContent =
+                "Para ordenar por cercanía, permití el acceso a tu ubicación.";
+
+            try {
+                if (!navigator.geolocation) {
+                    throw new Error("Este navegador no ofrece ubicación.");
+                }
+
+                const posicion = await new Promise((resolver, rechazar) => {
+                    navigator.geolocation.getCurrentPosition(
+                        resolver,
+                        rechazar,
+                        {
+                            enableHighAccuracy: false,
+                            timeout: 10000,
+                            maximumAge: 60000
+                        }
+                    );
+                });
+
+                parametros.set("lat", posicion.coords.latitude);
+                parametros.set("lng", posicion.coords.longitude);
+
+                mensaje.className = "alert alert-info";
+                mensaje.textContent =
+                    "Resultados ordenados por distancia aproximada en línea recta.";
+            } catch (error) {
+                orden = "precio";
+                selectorOrden.value = "precio";
+
+                if (error.code === 1) {
+                    avisoUbicacion =
+                        "No autorizaste la ubicación. Mostramos los resultados por menor precio.";
+                } else {
+                    avisoUbicacion =
+                        "No pudimos obtener tu ubicación. Mostramos los resultados por menor precio.";
+                }
+
+                mensaje.className = "alert alert-warning";
+                mensaje.textContent = avisoUbicacion;
+            }
+        }
+
+        parametros.set("orden", orden);
+
         const datos = await solicitarJson(
-            `/api/comparador/?${parametros.toString()}`
+            "/api/comparador/?" + parametros.toString()
         );
 
         mostrarResultados(obtenerLista(datos));
-
     } catch (error) {
         console.error(error);
-
-        contenedor.innerHTML = `
-            <div class="col-12">
-                <div class="alert alert-danger">
-                    Ocurrió un error al buscar los productos.
-                </div>
-            </div>
-        `;
-
+        mensaje.className = "alert alert-danger";
+        mensaje.textContent =
+            "No se pudo completar la búsqueda. Intentá nuevamente.";
     } finally {
         cargando.classList.add("d-none");
     }
@@ -375,6 +404,17 @@ function mostrarResultados(resultados) {
                             <p class="fw-bold mb-1">
                                 ${escaparHtml(registro.tienda.nombre)}
                             </p>
+
+                            ${
+                            registro.tienda.distancia_km != null
+                                ? `
+                                    <p class="small text-secondary mb-1">
+                                        Aprox. ${formatearPrecio(registro.tienda.distancia_km)} km
+                                        en línea recta
+                                    </p>
+                                `
+                                : ""
+                            }
 
                             <small class="fecha-actualizacion">
                                 Actualizado:
