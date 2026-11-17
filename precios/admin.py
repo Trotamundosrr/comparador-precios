@@ -1,7 +1,6 @@
 from django.contrib import admin
 
-from .models import Category, Price, Product, Promotion, Store, Synonym
-
+from .models import Category, Price, Product, Promotion, Reservation, Store, Synonym
 @admin.register(Synonym)
 class SynonymAdmin(admin.ModelAdmin):
     list_display = ("terms",)
@@ -37,3 +36,12 @@ class PriceAdmin(admin.ModelAdmin):
 class PromotionAdmin(admin.ModelAdmin):
     list_display = ("title", "store", "product", "promo_price", "valid_until")
     list_filter = ("store",)
+
+@admin.register(Reservation)
+class ReservationAdmin(admin.ModelAdmin):
+    list_display = ("code", "store", "product_name", "quantity", "customer_name",
+                    "customer_phone", "status", "created_at")
+    list_filter = ("store", "status")
+    list_editable = ("status",)
+    search_fields = ("code", "customer_name", "customer_phone", "product_name")
+    readonly_fields = ("code", "created_at")    

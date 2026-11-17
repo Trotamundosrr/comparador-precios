@@ -1,39 +1,26 @@
-from django.db.models import Count, Q
-from rest_framework import generics
-from rest_framework.exceptions import ValidationError
-
-from .geo import parse_coordinates, stores_by_distance
-from .models import Category, Store
-from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.response import Response
-from rest_framework.views import APIView
-
-from .comparador import ORDERS, absolute_url, build_comparison, lowest_prices
-from .models import Category, Promotion, Store
-
 from django.contrib.auth import authenticate
+from django.db.models import Count, Q
+from django.http import HttpResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import generics, status
 from rest_framework.authtoken.models import Token
+from rest_framework.exceptions import ValidationError
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.views import APIView
 
+from .comparador import (ORDERS, _best_promotions, _effective_price, absolute_url,
+                        build_comparison, lowest_prices)
+from .geo import parse_coordinates, stores_by_distance
+from .importer import build_template, import_products, read_table
+from .models import Category, Price, Product, Promotion, Reservation, Store
 from .permissions import IsStoreAdmin
-
-from .serializers import (
-    CategoriaSerializer,
-    LoginSerializer,
-    MiTiendaSerializer,
-    TiendaDetalleSerializer,
-    TiendaListaSerializer,
-    ArchivoSerializer,
-)
-
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-
-from .models import Category, Price, Product, Promotion, Store
 from .search import search_products
 from .serializers import (
+    ArchivoSerializer,
     CategoriaSerializer,
     LoginSerializer,
     MiProductoEdicionSerializer,
@@ -41,15 +28,12 @@ from .serializers import (
     MiProductoSalidaSerializer,
     MiPromocionSerializer,
     MiTiendaSerializer,
+    ReservaCrearSerializer,
+    ReservaSerializer,
     TiendaDetalleSerializer,
     TiendaListaSerializer,
 )
 from .services import remove_store_product, update_store_product, upsert_store_product
-from django.http import HttpResponse
-from rest_framework.parsers import FormParser, MultiPartParser
-
-from .importer import build_template, import_products, read_table
-
 def read_coordinates(request, required=False):
     """Lee ?lat=&lng= de la URL. Devuelve (lat, lng) o None. Responde 400 si son inválidas."""
     lat = request.query_params.get("lat")
@@ -103,12 +87,72 @@ class TiendaDetalleView(generics.RetrieveAPIView):
     def get_queryset(self):
         return stores_queryset()
 
+    #vista nueva q inclui
+class TiendaProductosView(APIView):
+    """Productos publicados por una tienda (con su precio y promoción vigente)."""
+
+    def get(self, request, slug):
+        store = generics.get_object_or_404(Store, slug=slug, is_active=True)
+        prices = list(Price.objects.filter(store=store).select_related("product", "product__category"))
+        promos = _best_promotions([p.product_id for p in prices])
+        items = []
+        for price in prices:
+            promo = promos.get((store.id, price.product_id))
+            product = price.product
+            items.append({
+                "precio_id": price.id,
+                "nombre": product.name, "marca": product.brand,
+                "presentacion": product.unit,
+                "categoria": product.category.name if product.category else None,
+                "imagen": absolute_url(request, price.image),
+                "precio": price.amount,
+                "precio_efectivo": _effective_price(price, promo),
+                "promocion": promo.title if promo else None,
+                "disponible": price.available,
+            })
+        return Response(items)
+
+
+class ReservaCrearView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []          # el cliente no tiene cuenta (y evita CSRF de sesión)
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "reserva"
+
+    @extend_schema(request=ReservaCrearSerializer, responses=ReservaSerializer)
+    def post(self, request):
+        data = ReservaCrearSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        price = data.price
+        reserva = Reservation.objects.create(
+            store=price.store, product=price.product,
+            product_name=str(price.product),
+            unit_price=_effective_price(price, _best_promotions([price.product_id])
+                                        .get((price.store_id, price.product_id))),
+            quantity=data.validated_data["cantidad"],
+            customer_name=data.validated_data["nombre"].strip(),
+            customer_phone=data.validated_data["telefono"].strip(),
+        )
+        return Response(ReservaSerializer(reserva).data, status=status.HTTP_201_CREATED)
+
+
+class ReservasConsultaView(APIView):
+    """Reservas de este navegador: se consultan por sus códigos (?codigos=AAA,BBB)."""
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        codes = [c.strip().upper() for c in request.query_params.get("codigos", "").split(",")
+                if c.strip()][:50]
+        reservas = Reservation.objects.filter(code__in=codes).select_related("store")
+        return Response(ReservaSerializer(reservas, many=True).data)    
+
 class ComparadorView(APIView):
     @extend_schema(parameters=[
         OpenApiParameter("q", str, description="Texto a buscar (exacto, parecido o sinónimo)"),
         OpenApiParameter("categoria", str, description="Slug de la categoría"),
         OpenApiParameter("orden", str, enum=list(ORDERS),
-                         description="relevancia (por defecto con q), precio o cercania"),
+                        description="relevancia (por defecto con q), precio o cercania"),
         OpenApiParameter("lat", float, description="Latitud del usuario"),
         OpenApiParameter("lng", float, description="Longitud del usuario"),
     ])
@@ -366,3 +410,4 @@ class ImportarView(APIView):
         except ValueError as exc:
             return Response({"archivo": [str(exc)]}, status=400)
         return Response(import_products(request.user.store, rows))
+

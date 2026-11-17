@@ -1,0 +1,126 @@
+{% extends "precios/base.html" %}
+{% load static %}
+
+{% block title %}Tienda | ComparaPrecios{% endblock %}
+
+{% block content %}
+
+<!-- Cabecera: portada, logo, nombre, horarios -->
+<section class="bg-white border-bottom">
+    <div id="cabecera-tienda" class="container py-4">
+        <div class="text-center">
+            <div class="spinner-border text-success" role="status"></div>
+        </div>
+    </div>
+</section>
+
+<section class="py-4">
+    <div class="container">
+        <div class="row g-4">
+
+            <!-- Columna izquierda: ofertas y productos -->
+            <div class="col-lg-7">
+                <p class="text-success fw-semibold mb-1">OFERTAS</p>
+                <h2 class="h3 fw-bold mb-3">Ofertas de la tienda</h2>
+                <div id="ofertas-tienda" class="row g-3 mb-5"></div>
+
+                <p class="text-success fw-semibold mb-1">PRODUCTOS</p>
+                <h2 class="h3 fw-bold mb-3">Reserva tus productos</h2>
+                <div id="productos-tienda" class="row g-3"></div>
+            </div>
+
+            <!-- Columna derecha: mapa y reservas -->
+            <div class="col-lg-5">
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-body">
+                        <h2 class="h5 fw-bold">Ubicación</h2>
+                        <p id="direccion-tienda" class="text-secondary mb-3"></p>
+
+                        <div class="ratio ratio-4x3 mb-3">
+                            <iframe
+                                id="mapa-tienda"
+                                title="Ubicación de la tienda en Google Maps"
+                                loading="lazy"
+                                allowfullscreen
+                            ></iframe>
+                        </div>
+
+                        <a id="boton-como-llegar" class="btn btn-success w-100"
+                           target="_blank" rel="noopener">
+                            Cómo llegar (Google Maps)
+                        </a>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <h2 class="h5 fw-bold">Mis productos reservados</h2>
+                        <div id="mis-reservas">
+                            <p class="text-secondary mb-0">Cargando...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+
+<!-- Ventana para reservar un producto -->
+<div class="modal fade" id="modal-reserva" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h2 class="modal-title h5">Reservar producto</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+
+                <div id="reserva-formulario">
+                    <p id="reserva-producto" class="fw-semibold"></p>
+
+                    <div id="reserva-mensaje" class="alert alert-danger d-none"></div>
+
+                    <form id="form-reserva">
+                        <input id="reserva-precio-id" type="hidden">
+
+                        <div class="mb-3">
+                            <label for="reserva-nombre" class="form-label">Tu nombre</label>
+                            <input id="reserva-nombre" class="form-control" required maxlength="120">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="reserva-telefono" class="form-label">Teléfono</label>
+                            <input id="reserva-telefono" class="form-control" type="tel"
+                                placeholder="Ej: 70123456" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="reserva-cantidad" class="form-label">Cantidad</label>
+                            <input id="reserva-cantidad" class="form-control" type="number"
+                                min="1" max="20" value="1" required>
+                        </div>
+
+                        <button id="reserva-boton" class="btn btn-warning w-100 fw-semibold"
+                                type="submit">
+                            Confirmar reserva
+                        </button>
+                    </form>
+                </div>
+
+                <div id="reserva-confirmacion" class="d-none"></div>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'precios/js/tienda.js' %}"></script>
+{% endblock %}

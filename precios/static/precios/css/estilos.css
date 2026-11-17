@@ -1,125 +1,89 @@
-:root {
-    --verde-principal: #198754;
-    --verde-oscuro: #0f5132;
-    --amarillo: #ffc107;
-    --fondo-suave: #f5f7f6;
-}
-
-html {
-    scroll-behavior: smooth;
-}
-
-body {
-    background-color: var(--fondo-suave);
-    color: #253238;
-}
-
-.navbar-brand {
-    font-size: 1.35rem;
-}
-
-.hero-principal {
-    background:
-        linear-gradient(
-            135deg,
-            rgba(15, 81, 50, 0.97),
-            rgba(25, 135, 84, 0.88)
-        );
-    min-height: 440px;
+.login-fondo {
+    background: linear-gradient(135deg, #f7f3d6, #dff0d0);
+    min-height: 100vh;
     display: flex;
     align-items: center;
+    padding: 3rem 0;
+    overflow: hidden;
 }
 
-.hero-principal h1 {
-    max-width: 850px;
-    margin: 0 auto;
-}
-
-.buscador-principal {
-    background-color: rgba(255, 255, 255, 0.15);
-    padding: 1rem;
+.login-tarjeta {
+    background-color: #ddf0aa;
+    color: #ffe08a;
+    padding: 2rem;
     border-radius: 1rem;
-    backdrop-filter: blur(5px);
+    max-width: 380px;
+    box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.15);
 }
 
-.card-producto,
-.card-promocion,
-.card-tienda {
-    border: 0;
-    border-radius: 1rem;
-    height: 100%;
-    transition:
-        transform 0.2s ease,
-        box-shadow 0.2s ease;
+.login-tarjeta .form-control {
+    background-color: transparent;
+    border: 1px solid #8fae7e;
+    color: #fff;
 }
 
-.card-producto:hover,
-.card-promocion:hover,
-.card-tienda:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.10);
+.btn-login {
+    background-color: #ffe08a;
+    color: #253238;
+    font-weight: 600;
+    border-radius: 2rem;
 }
 
-.imagen-producto,
-.imagen-promocion {
-    width: 100%;
-    height: 190px;
-    object-fit: cover;
-    background-color: #e9ecef;
-    border-radius: 1rem 1rem 0 0;
+.btn-login:hover {
+    background-color: #ffd24d;
 }
 
-.logo-tienda {
-    width: 72px;
-    height: 72px;
-    object-fit: cover;
-    border-radius: 50%;
-    background-color: #e9ecef;
-    border: 3px solid #ffffff;
-    box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.10);
+.login-demo {
+    color: #dfe9c8;
 }
 
-.precio-destacado {
-    color: var(--verde-principal);
-    font-size: 1.6rem;
-    font-weight: 700;
+/* ===== ÓRBITA ===== */
+.orbita {
+    position: relative;
+    width: 440px;
+    height: 440px;
+    animation: girar 28s linear infinite;   /* más número = más lento */
 }
 
-.etiqueta-oferta {
+.orbita-item {
     position: absolute;
-    top: 1rem;
-    left: 1rem;
-    z-index: 1;
+    top: 50%;
+    left: 50%;
+    width: 160px;
+    height: 160px;
+    margin: -80px 0 0 -80px;
+    /* 1) rota al ángulo, 2) se aleja del centro, 3) se endereza */
+    transform:
+        rotate(var(--angulo))
+        translateY(-170px)
+        rotate(calc(-1 * var(--angulo)));
 }
 
-.fecha-actualizacion {
-    font-size: 0.82rem;
-    color: #6c757d;
+.orbita-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    animation: girar-inverso 28s linear infinite;  /* mismo tiempo */
 }
 
-.estado-vacio {
-    border: 2px dashed #ced4da;
-    border-radius: 1rem;
-    padding: 2.5rem 1rem;
-    text-align: center;
-    color: #6c757d;
-    background-color: #ffffff;
+@keyframes girar {
+    to { transform: rotate(360deg); }
 }
 
-footer {
-    margin-top: auto;
+@keyframes girar-inverso {
+    to { transform: rotate(-360deg); }
 }
 
-@media (max-width: 767px) {
-    .hero-principal {
-        min-height: 520px;
-    }
+/* Se frena si pasas el mouse */
+.orbita:hover,
+.orbita:hover .orbita-item img {
+    animation-play-state: paused;
+}
 
-    .hero-principal h1 {
-        font-size: 2.2rem;
-    }
-
-    .buscador-principal {
-        padding: 0.75rem;
+/* Accesibilidad: sin animación si el sistema lo pide */
+@media (prefers-reduced-motion: reduce) {
+    .orbita,
+    .orbita-item img {
+        animation: none;
     }
 }
