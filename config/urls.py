@@ -17,6 +17,11 @@ urlpatterns = [
         TemplateView.as_view(template_name="precios/login.html"),
         name="acceso",
     ),
+    path(
+        "panel/",
+        TemplateView.as_view(template_name="precios/panel.html"),
+        name="panel",
+    ),
     path("admin/", admin.site.urls),
     path("api/", include("precios.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

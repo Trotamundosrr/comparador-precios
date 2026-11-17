@@ -1,0 +1,133 @@
+async function cargarPanel() {
+    const contenedor = document.getElementById("productos-tienda");
+    const token = localStorage.getItem("token_comercio");
+
+    function volverAlAcceso() {
+        localStorage.removeItem("token_comercio");
+        localStorage.removeItem("tienda_comercio");
+        window.location.replace("/acceso/");
+    }
+
+    if (!token) {
+        volverAlAcceso();
+        return;
+    }
+
+    const headers = {
+        Authorization: `Token ${token}`,
+        Accept: "application/json"
+    };
+
+    contenedor.textContent = "Cargando productos...";
+
+    try {
+        const [respuestaTienda, respuestaProductos] = await Promise.all([
+            fetch("/api/mi-tienda/", { headers }),
+            fetch("/api/mi-tienda/productos/", { headers })
+        ]);
+
+        if (respuestaTienda.status === 401 || respuestaProductos.status === 401) {
+            volverAlAcceso();
+            return;
+        }
+
+        if (!respuestaTienda.ok || !respuestaProductos.ok) {
+            throw new Error("No se pudo cargar la información de tu tienda.");
+        }
+
+        const tienda = await respuestaTienda.json();
+        document.getElementById("nombre-tienda").textContent = tienda.nombre;
+
+        const datos = await respuestaProductos.json();
+        const productos = Array.isArray(datos) ? datos : datos.results;
+
+        if (productos.length === 0) {
+            contenedor.textContent = "Tu tienda aún no tiene productos.";
+            return;
+        }
+
+        const lista = document.createElement("ul");
+        lista.className = "list-group";
+
+        for (const producto of productos) {
+            const fila = document.createElement("li");
+            fila.className = "list-group-item";
+
+            const nombre = document.createElement("strong");
+            nombre.textContent = producto.nombre;
+
+            const formulario = document.createElement("form");
+            formulario.className = "d-flex flex-wrap gap-2 align-items-center mt-2";
+
+            const etiqueta = document.createElement("label");
+            etiqueta.htmlFor = `precio-${producto.id}`;
+            etiqueta.textContent = "Precio (Bs)";
+
+            const campo = document.createElement("input");
+            campo.id = etiqueta.htmlFor;
+            campo.type = "text";
+            campo.inputMode = "decimal";
+            campo.className = "form-control form-control-sm w-auto";
+            campo.size = 10;
+            campo.value = producto.precio;
+
+            const boton = document.createElement("button");
+            boton.type = "submit";
+            boton.className = "btn btn-sm btn-outline-success";
+            boton.textContent = "Guardar";
+
+            const mensaje = document.createElement("span");
+            mensaje.setAttribute("role", "status");
+
+            formulario.addEventListener("submit", async (evento) => {
+                evento.preventDefault();
+
+                const precio = campo.value.trim().replace(",", ".");
+                if (!/^\d{1,8}(\.\d{1,2})?$/.test(precio) || Number(precio) <= 0) {
+                    mensaje.textContent = "Ingresá un precio mayor a cero, con hasta dos decimales.";
+                    return;
+                }
+
+                boton.disabled = true;
+                campo.disabled = true;
+                mensaje.textContent = "Guardando...";
+
+                try {
+                    const respuesta = await fetch(`/api/mi-tienda/productos/${producto.id}/`, {
+                        method: "PATCH",
+                        headers: { ...headers, "Content-Type": "application/json" },
+                        body: JSON.stringify({ precio })
+                    });
+
+                    if (respuesta.status === 401) {
+                        volverAlAcceso();
+                        return;
+                    }
+
+                    if (!respuesta.ok) {
+                        throw new Error(`No se pudo guardar el precio (${respuesta.status}).`);
+                    }
+
+                    const actualizado = await respuesta.json();
+                    campo.value = actualizado.precio;
+                    mensaje.textContent = "Precio guardado.";
+                } catch (error) {
+                    mensaje.textContent = error.message;
+                } finally {
+                    boton.disabled = false;
+                    campo.disabled = false;
+                }
+            });
+
+            formulario.append(etiqueta, campo, boton, mensaje);
+            fila.append(nombre, formulario);
+            lista.appendChild(fila);
+        }
+
+        contenedor.replaceChildren(lista);
+    } catch (error) {
+        contenedor.textContent = error.message;
+    }
+}
+
+cargarPanel();

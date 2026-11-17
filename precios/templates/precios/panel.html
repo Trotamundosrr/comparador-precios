@@ -1,0 +1,17 @@
+{% extends "precios/base.html" %}
+{% load static %}
+{% block title %}Mi tienda | ComparaPrecios{% endblock %}
+
+{% block content %}
+<section class="container py-5">
+    <h1 id="nombre-tienda">Mi tienda</h1>
+    <h2 class="h4 mt-4">Mis productos y precios</h2>
+    <div id="productos-tienda">
+        Aquí aparecerán los productos de tu tienda.
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'precios/js/panel.js' %}" defer></script>
+{% endblock %}
